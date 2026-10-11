@@ -1,0 +1,346 @@
+---
+title: "Final_Covid_19_Project"
+author: "P.Rogers"
+date: "2026-10-04"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+
+
+## Introduction
+
+The purpose of this project is to analyze COVID-19 data collected by Johns Hopkins University. The analysis will examine how confirmed COVID-19 cases changed over time in the United States and compare COVID-19 trends among selected states. In addition, a statistical model will be used to examine the relationship between time and reported COVID-19 cases during a selected period. Potential limitations and sources of bias within the data will also be considered.
+
+## Data Import
+
+```{r}
+## Data Import
+
+confirmed_US <- read.csv(
+  "time_series_covid19_confirmed_US-2.csv",
+  check.names = FALSE
+)
+
+confirmed_global <- read.csv(
+  "time_series_covid19_confirmed_global-2.csv",
+  check.names = FALSE
+)
+
+deaths_US <- read.csv(
+  "time_series_covid19_deaths_US-2.csv",
+  check.names = FALSE
+)
+
+deaths_global <- read.csv(
+  "time_series_covid19_deaths_global-2.csv",
+  check.names = FALSE
+)
+```
+
+
+
+## Clean the confirmed US Data
+
+Identifying the date columns, adding all counties together to create national cumulative totals, and cleaning the data frame.
+```{r}
+date_cols <- grep(
+  "^[0-9]{1,2}/[0-9]{1,2}/[0-9]{2}$",
+  names(confirmed_US)
+)
+
+length(date_cols)
+US_cases <- colSums(
+  confirmed_US[, date_cols],
+  na.rm = TRUE
+)
+covid_US <- data.frame(
+  Date = as.Date(names(US_cases), format = "%m/%d/%y"),
+  Total_Cases = as.numeric(US_cases)
+)
+```
+
+## Calculate Daily New Cases
+
+Calculating the increase for day over day instead of only cumulative cases. 
+
+```{r}
+covid_US$New_Cases <- c(
+  NA,
+  diff(covid_US$Total_Cases)
+)
+head(covid_US)
+```
+
+## Visualization 1 - National COVID Cases
+
+This visualization is a time-series line graph displaying the daily number of newly reported COVID-19 cases in the United States from 2020 through early 2023. The x-axis represents the date, while the y-axis represents the number of new confirmed cases reported each day.
+
+```{r}
+plot(
+  covid_US$Date,
+  covid_US$New_Cases,
+  type = "l",
+  main = "Daily Reported COVID-19 Cases in the United States",
+  xlab = "Date",
+  ylab = "New Confirmed Cases"
+)
+```
+
+## Visualization 2 - State Comparison
+
+Comparing 4 states: South Carolina, New York, Florida, and California, to see how COVID-19 patterns differ amoung states.In this anlaysis, there is: a state variable called "Province_State", cumulative totals for each state, turned it into a data frame, and data plotted.
+
+```{r}
+unique(confirmed_US$Province_State)
+states <- c(
+  "South Carolina",
+  "New York",
+  "Florida",
+  "California"
+)
+
+state_cases <- lapply(states, function(state) {
+
+  rows <- confirmed_US$Province_State == state
+
+  colSums(
+    confirmed_US[rows, date_cols],
+    na.rm = TRUE
+  )
+})
+state_data <- data.frame(
+  Date = covid_US$Date,
+  South_Carolina = as.numeric(state_cases[[1]]),
+  New_York = as.numeric(state_cases[[2]]),
+  Florida = as.numeric(state_cases[[3]]),
+  California = as.numeric(state_cases[[4]])
+)
+matplot(
+  state_data$Date,
+  state_data[, 2:5],
+  type = "l",
+  lty = 1,
+  xlab = "Date",
+  ylab = "Confirmed Cases",
+  main = "Confirmed COVID-19 Cases in Selected States"
+)
+
+legend(
+  "topleft",
+  legend = c(
+    "South Carolina",
+    "New York",
+    "Florida",
+    "California"
+  ),
+  lty = 1,
+  col = 1:4
+)
+```
+
+## Statistical Model: Poisson Regression
+
+Analyzing the following question: Was there a significant change in the expected number of daily reported COVID-19 cases over a selected period? The Poisson Regression model will be helpful when analyzing Covid-19 data since it is specifically designed to model count data.
+
+Below, the following steps were conducted: using a defined period (June 1st-August 2020) and checked for negative daily counts.
+
+```{r}
+model_data <- subset(
+  covid_US,
+  Date >= as.Date("2020-06-01") &
+  Date <= as.Date("2020-08-01")
+)
+
+model_data$Day <- 1:nrow(model_data)
+summary(model_data$New_Cases)
+poisson_model <- glm(
+  New_Cases ~ Day,
+  family = poisson(link = "log"),
+  data = model_data
+)
+
+summary(poisson_model)
+```
+
+## Easier Interpretation of Results
+
+To allow for an easier interpretation of results, poisson regression uses a log link - the raw "Day" coefficient is not as useful. Converting this into a percentage.
+
+```{r}
+day_coef <- coef(poisson_model)["Day"]
+
+percent_change <- (exp(day_coef) - 1) * 100
+
+percent_change
+```
+
+During the selected period, the model estimates that the expected numbr of reported new Covid-10 cases increeased by approxiately 2.19% per day.
+
+## Add predicted values
+
+This next section will make the model section much stronger because you can visualize the fitted model instead of only dumping summary() into the report.
+
+```{r}
+model_data$Predicted_Cases <- predict(
+  poisson_model,
+  type = "response"
+)
+plot(
+  model_data$Date,
+  model_data$New_Cases,
+  pch = 16,
+  xlab = "Date",
+  ylab = "New Confirmed Cases",
+  main = "Observed and Predicted COVID-19 Cases"
+)
+
+lines(
+  model_data$Date,
+  model_data$Predicted_Cases,
+  lwd = 2
+)
+
+legend(
+  "topleft",
+  legend = c("Observed Cases", "Poisson Model"),
+  pch = c(16, NA),
+  lty = c(NA, 1)
+)
+```
+
+## Checking for Overdispersion
+
+```{r}
+dispersion <- sum(
+  residuals(poisson_model, type = "pearson")^2
+) / poisson_model$df.residual
+
+dispersion
+```
+1393.459
+
+
+Since the dispersion statistic is much larger than 1, quasi-Poisson regression will be the final model. Will also calculate the estimated daily percentage.
+
+I first considered a Poisson regression because the response variable represents daily case counts. I then evaluated the dispersion of the data. Because the variability in daily cases exceeded that expected under a standard Poisson model, a quasi-Poisson model was used to account for overdispersion.
+
+## Stronger model development
+
+## Switch to quasi-Poisson
+
+```{r}
+quasi_model <- glm(
+  New_Cases ~ Day,
+  family = quasipoisson(link = "log"),
+  data = model_data
+)
+
+summary(quasi_model)
+```
+
+## Calculate Percentage Change
+
+```{r}
+day_coef <- coef(quasi_model)["Day"]
+
+percent_change <- (exp(day_coef) - 1) * 100
+
+percent_change
+```
+
+## Getting Dispersion
+
+```{r}
+summary(quasi_model)$dispersion
+```
+
+## Quasi-Poisson Visualization
+
+```{r}
+
+
+model_data$Predicted_Cases <- predict(
+  quasi_model,
+  type = "response"
+)
+
+
+plot(
+  model_data$Day,
+  model_data$New_Cases,
+  type = "l",
+  col = "black",
+  main = "Actual vs Predicted COVID-19 Cases",
+  xlab = "Day",
+  ylab = "New COVID-19 Cases"
+)
+
+
+lines(
+  model_data$Day,
+  model_data$Predicted_Cases,
+  col = "blue",
+  lwd = 2
+)
+
+
+legend(
+  "topleft",
+  legend = c("Actual Cases", "Quasi-Poisson Predictions"),
+  col = c("black", "blue"),
+  lty = 1,
+  lwd = c(1, 2)
+)
+
+```
+
+The quasi-Poisson model changes the estimated uncertainty to account for overdispersion, rather than changing the predicted line.
+
+##Second Visualization for Overdispersion
+
+```{r}
+
+## Visualization - Quasi-Poisson Residuals
+
+plot(
+  model_data$Day,
+  residuals(quasi_model, type = "pearson"),
+  main = "Quasi-Poisson Regression Residuals",
+  xlab = "Day",
+  ylab = "Pearson Residuals",
+  pch = 16,
+  col = "darkblue"
+)
+
+abline(h = 0, col = "red", lwd = 2)
+
+```
+
+This graph shows how the observed case counts differ from the model's expected values, standardized using the Poisson variance.
+
+
+## Bias and Limitations
+
+Although the quasi-Poisson model accounts for overdispersion, it does not address every characteristic of COVID-19 time-series data. Daily observations may be correlated because the number of cases reported on one day can be related to the number reported on surrounding days. Reporting patterns may also vary by day of the week. Furthermore, the model includes time as the primary predictor and does not account for other factors that may influence transmission, including public health policies, behavior, testing availability, population characteristics, and vaccination. Therefore, the model should be interpreted as describing an association between time and reported cases during the selected period rather than establishing a causal relationship.
+
+## Conclusion
+
+This project analyzed COVID-19 case trends in the United States using data collected by Johns Hopkins University. Through data cleaning, visualization, and statistical modeling, the analysis examined how reported COVID-19 cases changed over time and how trends differed across selected states.
+
+The national time-series visualization demonstrated that COVID-19 cases experienced multiple waves between 2020 and early 2023, with the largest reported increase occurring in early 2022. The state comparison visualization showed differences in cumulative confirmed cases across South Carolina, New York, Florida, and California, although these comparisons were not adjusted for population size.
+
+For the statistical modeling portion, Poisson regression was initially selected because daily COVID-19 cases represent count data. However, the model produced a Pearson dispersion statistic of approximately 1,393.46, indicating substantial overdispersion relative to the standard Poisson assumption. As a result, quasi-Poisson regression was selected to provide more appropriate standard errors and statistical inference.
+
+The quasi-Poisson model estimated an average daily increase of approximately 2.19% in expected reported cases during the selected period of June 1 through August 1, 2020. However, the residual visualization revealed systematic patterns, suggesting that the model did not fully capture changes in case counts over time.
+
+Overall, this project demonstrates the importance of combining data visualization with statistical modeling to understand trends in public health data. It also highlights the need to evaluate model assumptions and recognize limitations when interpreting statistical results.
