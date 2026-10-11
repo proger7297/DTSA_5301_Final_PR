@@ -1,0 +1,175 @@
+---
+title: "NYPD Shooting Incident Data Analysis.Rmd"
+author: "P.Rogers"
+date: "2026-09-26"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+
+This project analyzes the NYPD Shooting Incident dataset. The goal of the analysis is to examine where shooting incidents occur and how the
+number of incidents has changed over time. The dataset is cleaned and summarized prior conducting exploratory analysis and creating a linear regression model.
+
+ <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+## Data Import and Preparation
+The NYPD Shooting Incident dataset was imported into R from a CSV file.
+```{r import}
+data <- read.csv("export.csv")
+```
+## Data Cleaning
+Appropriate variables were converted to date and factor types to prepare the dataset for analysis.
+```
+{r clean-data}
+data$OCCUR_DATE <- as.Date(data$OCCUR_DATE,
+                           format = "%m/%d/%Y")
+
+data$BORO <- as.factor(data$BORO)
+data$PERP_SEX <- as.factor(data$PERP_SEX)
+data$PERP_RACE <- as.factor(data$PERP_RACE)
+data$VIC_SEX <- as.factor(data$VIC_SEX)
+data$VIC_RACE <- as.factor(data$VIC_RACE)
+```
+## Missing Data
+```{r missing-data}
+colSums(is.na(data))
+```
+The missing data shows whether variables contain observations that are unavailable. Missing geographic information will not be replaced due to possible data distortion.
+
+## Exploratory Data Analysis
+
+## Shooting Incidents by Borough
+
+The first visualization compares the number of recorded shooting incidents across New York City boroughs.
+```{r borough-visualization}
+boro_counts <- table(data$BORO)
+
+barplot(boro_counts,
+        main = "NYPD Shooting Incidents by Borough",
+        xlab = "Borough",
+        ylab = "Number of Incidents")
+```
+## Analysis
+
+The visualization shows that record shooting incidents are not distributed equally among the boroughs. This visualization shows raw incident counts, but does not demonstrate differences for population size among the boroughs.The results should be interpreted demonstrating the differences in the number of recorded incidents rather than the differences in shooting rates.
+
+## Shooting Incidents Over Time
+The second visualization shows the number of recorded shooting incidents that changed by year.
+
+
+
+```{r yearly-visualization, fig.width=7, fig.height=5}
+
+
+if (!inherits(data$OCCUR_DATE, "Date")) {
+  data$OCCUR_DATE <- as.Date(data$OCCUR_DATE, format = "%m/%d/%Y")
+}
+
+
+data$YEAR <- as.numeric(format(data$OCCUR_DATE, "%Y"))
+
+
+year_counts <- table(data$YEAR)
+
+
+year_data <- data.frame(
+  year = as.numeric(names(year_counts)),
+  incidents = as.numeric(year_counts)
+)
+
+
+plot(year_data$year,
+     year_data$incidents,
+     type = "o",
+     pch = 19,
+     main = "NYPD Shooting Incidents by Year",
+     xlab = "Year",
+     ylab = "Number of Incidents")
+
+```
+
+
+## Analysis
+The visualization demonstrates the number of recorded shooting incidents varies overtime. Annual counts are not constant, which questions whether an overall linear trend exits across the period represented.
+
+
+## Linear Regression Model
+A linear regression model was used to test the relationship between year and the annual number of recording shooting incidents.
+
+```{r regression-model}
+
+
+model_date <- data$OCCUR_DATE
+
+
+if (!inherits(model_date, "Date")) {
+  model_date <- as.Date(model_date, format = "%m/%d/%Y")
+}
+
+
+model_year <- as.numeric(format(model_date, "%Y"))
+
+
+model_year <- model_year[!is.na(model_year)]
+
+
+year_counts_model <- table(model_year)
+
+
+model_data <- data.frame(
+  year = as.numeric(names(year_counts_model)),
+  incidents = as.numeric(year_counts_model)
+)
+
+
+model_data
+
+
+shooting_model <- lm(incidents ~ year, data = model_data)
+
+
+summary(shooting_model)
+```
+## Regression Visualization
+The fitted regression line is displayed with the observed annual incident counts.
+```{r regression-plot}
+
+plot(model_data$year,
+     model_data$incidents,
+     main = "NYPD Shooting Incidents with Linear Trend",
+     xlab = "Year",
+     ylab = "Number of Incidents",
+     pch = 19)
+
+abline(shooting_model, lwd = 2)
+```
+
+## Model Analysis
+The coefficient for year represents the estimated average change in the number of recorded incident associated with one-year increase.The p-value for the year coefficient can be used to evaluate evidence of a linear relationship for year and annual incident counts. The R-squared value describes the proportion of variation in annual incident counts that is demonstrated by the fitted linear relationship.
+
+Because this analysis uses observational data, the regression identifies an association and does not demonstrate the passage of time causes increases or decreases in shooting incidents.
+
+## Bias and Limitations
+Several potential limitations should be considered should be considered when interpreting this analysis. The data set represents incidents recorded by NYPD. Missing information could affect analyses in certain variables.
+
+The borough comparison also uses raw incident counts. New York City boroughs have various population differences, meaning that a borough with more incidents does not necessarily have a proportionally greater individual risk. A population-adjusted incident rate would provide a different way to compare boroughs.
+
+The regression model also considers only once year and annual incident count. Other factors not included in the model could contribute to changes in shooting incidents.
+
+## Additional Questions
+The exploratory analysis raises several questions that could be investigated further:
+
+-Do shooting trends over time differ among boroughs?
+
+-Would borough comparisons change if incidents were adjusted for population?
+
+-Have victim or perpetrator characteristics changed over time?
